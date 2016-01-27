@@ -65,7 +65,7 @@ You need to use leptonica with cmake patch:
     cd tesseract
     mkdir build
     cd build
-    cmake .. -DLeptonica_BUILD_DIR=\abs\path\to\leptonica\build
+    cmake .. -DLeptonica_DIR=\abs\path\to\leptonica\build
     cmake --build .
 
 
