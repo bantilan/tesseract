@@ -23,7 +23,7 @@
 #endif
 
 #include <iostream>
-
+#include <fstream>
 #include "allheaders.h"
 #include "baseapi.h"
 #include "basedir.h"
@@ -133,6 +133,8 @@ void PrintHelpMessage(const char* program) {
       "  -v, --version         Show version information.\n"
       "  --list-langs          List available languages for tesseract engine.\n"
       "  --print-parameters    Print tesseract parameters to stdout.\n"
+	  "  --scanned-codes       Detect CD-Key scanned codes for Steam, Origin and UPLAY."
+	  "                        Replace input filename to found CD-Key code."
       ;
 
   fprintf(stderr, "\n%s", single_options);
@@ -201,6 +203,7 @@ void ParseArgs(const int argc, char** argv,
                   const char** datapath,
                   bool* list_langs,
                   bool* print_parameters,
+				  bool* scanned_codes,
                   GenericVector<STRING>* vars_vec,
                   GenericVector<STRING>* vars_values,
                   int* arg_i,
@@ -253,7 +256,9 @@ void ParseArgs(const int argc, char** argv,
     } else if (strcmp(argv[i], "--print-parameters") == 0) {
       noocr = true;
       *print_parameters = true;
-    } else if (strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
+    } else if (strcmp(argv[i], "--scanned-codes") == 0) {
+		*scanned_codes = true;
+	} else if (strcmp(argv[i], "-c") == 0 && i + 1 < argc) {
       // handled properly after api init
       ++i;
     } else if (*image == NULL) {
@@ -343,13 +348,14 @@ int main(int argc, char **argv) {
   const char* datapath = NULL;
   bool list_langs = false;
   bool print_parameters = false;
+  bool scanned_codes = false;
   GenericVector<STRING> vars_vec, vars_values;
   int arg_i = 1;
   tesseract::PageSegMode pagesegmode = tesseract::PSM_AUTO;
 
   ParseArgs(argc, argv,
           &lang, &image, &outputbase, &datapath,
-          &list_langs, &print_parameters,
+          &list_langs, &print_parameters, &scanned_codes,
           &vars_vec, &vars_values, &arg_i, &pagesegmode);
 
   PERF_COUNT_START("Tesseract:main")
@@ -379,7 +385,15 @@ int main(int argc, char **argv) {
      exit(0);
   }
 
+  if (scanned_codes) {
+	  api.SetVariable("tessedit_char_whitelist", "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345789-");
+	  api.SetVariable("tessedit_char_blacklist", " \n\r");
+	  api.ActivateScannedCodes();
+  }
+
   FixPageSegMode(&api, pagesegmode);
+
+
 
   if (pagesegmode == tesseract::PSM_AUTO_ONLY) {
     int ret_val = 0;
@@ -389,6 +403,8 @@ int main(int argc, char **argv) {
       fprintf(stderr, "Cannot open input file: %s\n", image);
       exit(2);
     }
+
+
 
     api.SetImage(pixs);
 
@@ -432,6 +448,7 @@ int main(int argc, char **argv) {
       exit(1);
     }
   }
+
   PERF_COUNT_END
   return 0;                      // Normal exit
 }
