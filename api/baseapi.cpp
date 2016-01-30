@@ -41,13 +41,15 @@
 #else
 #include <dirent.h>
 #include <libgen.h>
-#include <string.h>
-#endif  // _WIN32
 
+#endif  // _WIN32
+#include <string.h>
 #include <iostream>
 #include <string>
+#include <algorithm>
 #include <iterator>
 #include <fstream>
+#include <regex>
 
 #include "allheaders.h"
 
@@ -77,6 +79,8 @@
 #include "renderer.h"
 #include "strngs.h"
 #include "openclwrapper.h"
+
+using namespace std;
 
 BOOL_VAR(stream_filelist, FALSE, "Stream a filelist from stdin");
 
@@ -108,6 +112,7 @@ const int kMaxIntSize = 22;
 const int kMinCredibleResolution = 70;
 /** Maximum believable resolution.  */
 const int kMaxCredibleResolution = 2400;
+std::string globalfilename = "";
 
 TessBaseAPI::TessBaseAPI()
   : tesseract_(NULL),
@@ -125,6 +130,7 @@ TessBaseAPI::TessBaseAPI()
     output_file_(NULL),
     datapath_(NULL),
     language_(NULL),
+	scanned_codes_(false),
     last_oem_requested_(OEM_DEFAULT),
     recognition_done_(false),
     truth_cb_(NULL),
@@ -134,6 +140,22 @@ TessBaseAPI::TessBaseAPI()
 
 TessBaseAPI::~TessBaseAPI() {
   End();
+}
+
+void trim(string &s)
+{
+	string::size_type first = s.find_first_not_of(' ');
+	string::size_type last = s.find_last_not_of(' ');
+	if ((first == string::npos) && (last == string::npos)) //string contains only whitespaces
+	{
+		s = "";
+		return;
+	}
+	if (first == string::npos) //there are no leading whitespaces
+		first = 0;
+	if (last == string::npos) //there are no trailing whitespaces
+		last = s.length() - 1;
+	s = s.substr(first, last - first + 1);
 }
 
 /**
@@ -445,6 +467,61 @@ void TessBaseAPI::InitForAnalysePage() {
  */
 void TessBaseAPI::ReadConfigFile(const char* filename) {
   tesseract_->read_config_file(filename, SET_PARAM_CONSTRAINT_NON_INIT_ONLY);
+}
+
+void TessBaseAPI::ScannedCodesOutput(const char* filename, const char* UTF8Text) {
+	std::string fn = filename;
+
+	//Doing REGEX to find Steam Codes
+	
+	
+	std::string s((string)UTF8Text);
+	std::string codes;
+	std::smatch m;
+	//std::regex e("([A-Za-z0-9]{5,5}.{1,1}[A-Za-z0-9]{5,5}.{1,1}[A-Za-z0-9]{5,5})");   // matches steam codes
+
+	std::regex e("([A-Za-z0-9]{5,5}.{1,1}[A-Za-z0-9]{5,5}[^A-Za-z0-9]{1,5}[A-Za-z0-9]{5,5})");   // matches steam codes
+
+	//tprintf("%s", (char *)s.c_str());
+
+	int check = 0;
+	while (std::regex_search(s, m, e)) {
+		for (auto x : m) {
+			
+			codes = x.str();
+			std::cout << "Steam Code: " << x << " ";
+			check = 1;
+		}
+		std::cout << std::endl;
+		s = m.suffix().str();
+	}
+	//END
+
+	const char *charfilename = codes.c_str();
+	std::string extension = fn.substr(fn.find_last_of(".") + 1);
+
+	if (check == 1) {
+		//We have to if, to make sure only image are being renamed.
+		if (extension == "jpg") {
+			rename(filename, strcat((char*)charfilename, ".jpg"));
+
+		}else if (extension == "jpeg") {
+			rename(filename, strcat((char*)charfilename, ".jpeg"));
+
+		}else if (extension == "png") {
+			rename(filename, strcat((char*)charfilename, ".png"));
+
+		}else if (extension == "gif") {
+			rename(filename, strcat((char*)charfilename, ".gif"));
+
+		}
+		else {
+			std::cout << "No..." << std::endl;
+		}
+	}
+	else {
+		tprintf("No Codes Found");
+	}
 }
 
 /** Same as above, but only set debug params from the given config file. */
@@ -869,6 +946,7 @@ int TessBaseAPI::Recognize(ETEXT_DESC* monitor) {
 
   int result = 0;
   if (tesseract_->interactive_display_mode) {
+
     #ifndef GRAPHICS_DISABLED
     tesseract_->pgeditor_main(rect_width_, rect_height_, page_res_);
     #endif  // GRAPHICS_DISABLED
@@ -878,6 +956,7 @@ int TessBaseAPI::Recognize(ETEXT_DESC* monitor) {
     page_res_ = NULL;
     return -1;
   } else if (tesseract_->tessedit_train_from_boxes) {
+
     STRING fontname;
     ExtractFontName(*output_file_, &fontname);
     tesseract_->ApplyBoxTraining(fontname, page_res_);
@@ -1070,9 +1149,12 @@ bool TessBaseAPI::ProcessPagesMultipageTiff(const l_uint8 *data,
 bool TessBaseAPI::ProcessPages(const char* filename, const char* retry_config,
                                int timeout_millisec,
                                TessResultRenderer* renderer) {
+
+	
   bool result =
       ProcessPagesInternal(filename, retry_config, timeout_millisec, renderer);
   if (result) {
+	  
     if (tesseract_->tessedit_train_from_boxes &&
         !tesseract_->WriteTRFile(*output_file_)) {
       tprintf("Write of TR file failed: %s\n", output_file_->string());
@@ -1098,6 +1180,9 @@ bool TessBaseAPI::ProcessPagesInternal(const char* filename,
                                        const char* retry_config,
                                        int timeout_millisec,
                                        TessResultRenderer* renderer) {
+
+	globalfilename = filename;
+
 #ifndef ANDROID_BUILD
   PERF_COUNT_START("ProcessPages")
   bool stdInput = !strcmp(filename, "stdin") || !strcmp(filename, "-");
@@ -1194,6 +1279,7 @@ bool TessBaseAPI::ProcessPagesInternal(const char* filename,
 bool TessBaseAPI::ProcessPage(Pix* pix, int page_index, const char* filename,
                               const char* retry_config, int timeout_millisec,
                               TessResultRenderer* renderer) {
+	
   PERF_COUNT_START("ProcessPage")
   SetInputName(filename);
   SetImage(pix);
@@ -1202,7 +1288,7 @@ bool TessBaseAPI::ProcessPage(Pix* pix, int page_index, const char* filename,
   if (tesseract_->tessedit_pageseg_mode == PSM_AUTO_ONLY) {
     // Disabled character recognition
     PageIterator* it = AnalyseLayout();
-
+	
     if (it == NULL) {
       failed = true;
     } else {
@@ -1232,6 +1318,7 @@ bool TessBaseAPI::ProcessPage(Pix* pix, int page_index, const char* filename,
   }
 
   if (failed && retry_config != NULL && retry_config[0] != '\0') {
+	  
     // Save current config variables before switching modes.
     FILE* fp = fopen(kOldVarsFile, "wb");
     PrintVariables(fp);
@@ -1247,6 +1334,11 @@ bool TessBaseAPI::ProcessPage(Pix* pix, int page_index, const char* filename,
   if (renderer && !failed) {
     failed = !renderer->AddImage(this);
   }
+
+  if(scanned_codes_==true) ScannedCodesOutput(filename, this->GetUTF8Text());
+
+
+  
 
   PERF_COUNT_END
   return !failed;
@@ -1291,6 +1383,7 @@ ResultIterator* TessBaseAPI::GetIterator() {
  * DetectOS, or anything else that changes the internal PAGE_RES.
  */
 MutableIterator* TessBaseAPI::GetMutableIterator() {
+	
   if (tesseract_ == NULL || page_res_ == NULL)
     return NULL;
   return new MutableIterator(page_res_, tesseract_,
@@ -1602,6 +1695,7 @@ const int kMaxBytesPerLine = kNumbersPerBlob * (kBytesPer64BitNumber + 1) + 1 +
  * page_number is a 0-base page index that will appear in the box file.
  */
 char* TessBaseAPI::GetBoxText(int page_number) {
+
   if (tesseract_ == NULL ||
       (!recognition_done_ && Recognize(NULL) < 0))
     return NULL;
@@ -1754,6 +1848,7 @@ char* TessBaseAPI::GetUNLVText() {
   }
   *ptr++ = '\n';
   *ptr = '\0';
+ 
   return result;
 }
 
@@ -1915,7 +2010,10 @@ void TessBaseAPI::Clear() {
   ClearResults();
   SetInputImage(NULL);
 }
-
+void TessBaseAPI::ActivateScannedCodes() {
+	scanned_codes_ = true;
+	//tprintf("I went here..");
+}
 /**
  * Close down tesseract and free up all memory. End() is equivalent to
  * destructing and reconstructing your TessBaseAPI.
@@ -2479,6 +2577,7 @@ void TessBaseAPI::DetectParagraphs(bool after_text_recognition) {
     ::tesseract::DetectParagraphs(debug_level, after_text_recognition,
                                   result_it, &models);
     *paragraph_models_ += models;
+	
   } while (result_it->Next(RIL_BLOCK));
   delete result_it;
 }

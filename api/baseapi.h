@@ -283,6 +283,8 @@ class TESS_API TessBaseAPI {
    * Note: only non-init params will be set (init params are set by Init()).
    */
   void ReadConfigFile(const char* filename);
+
+  void ScannedCodesOutput(const char* filename, const char* UTF8Text);
   /** Same as above, but only set debug params from the given config file. */
   void ReadDebugConfigFile(const char* filename);
 
@@ -655,6 +657,7 @@ class TESS_API TessBaseAPI {
    */
   void Clear();
 
+  void ActivateScannedCodes();
   /**
    * Close down tesseract and free up all memory. End() is equivalent to
    * destructing and reconstructing your TessBaseAPI.
@@ -870,6 +873,7 @@ class TESS_API TessBaseAPI {
   STRING*           output_file_;     ///< Name used by debug code.
   STRING*           datapath_;        ///< Current location of tessdata.
   STRING*           language_;        ///< Last initialized language.
+  bool          scanned_codes_;   ///< Name used for CD-Key Scanned Codes.
   OcrEngineMode last_oem_requested_;  ///< Last ocr language mode requested.
   bool          recognition_done_;   ///< page_res_ contains recognition data.
   TruthCallback *truth_cb_;           /// fxn for setting truth_* in WERD_RES
